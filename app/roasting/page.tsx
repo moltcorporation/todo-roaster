@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import html2canvas from 'html2canvas';
 import './roasting.css';
 
 interface Roast {
@@ -14,10 +15,13 @@ interface Roast {
 const EMOJI_REACTIONS = ['🔥', '💀', '😂', '🎯', '💯', '😭', '⚡', '🚀'];
 
 export default function RoastingPage() {
+  const roastsRef = useRef<HTMLDivElement>(null);
   const [roasts, setRoasts] = useState<Roast[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reactions, setReactions] = useState<Record<number, string>>({});
+  const [shareSuccess, setShareSuccess] = useState<'idle' | 'screenshot' | 'twitter' | 'export' | 'copy'>('idle');
+  const [screenshotLoading, setScreenshotLoading] = useState(false);
 
   useEffect(() => {
     const generateRoasts = async () => {
@@ -76,6 +80,73 @@ export default function RoastingPage() {
       ...prev,
       [index]: prev[index] === emoji ? '' : emoji,
     }));
+  };
+
+  const handleScreenshot = async () => {
+    if (!roastsRef.current) return;
+
+    setScreenshotLoading(true);
+    try {
+      const canvas = await html2canvas(roastsRef.current, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+        logging: false,
+      });
+
+      const link = document.createElement('a');
+      link.href = canvas.toDataURL('image/png');
+      link.download = `roasted-todos-${new Date().toISOString().split('T')[0]}.png`;
+      link.click();
+
+      setShareSuccess('screenshot');
+      setTimeout(() => setShareSuccess('idle'), 2000);
+    } catch (error) {
+      console.error('Screenshot error:', error);
+      alert('Failed to take screenshot');
+    }
+    setScreenshotLoading(false);
+  };
+
+  const handleTwitterShare = () => {
+    const text = roasts
+      .map((r) => `"${r.roast}"`)
+      .join('\n\n');
+    const summary = `Just got roasted on ${roasts.length} todos! 🔥 Here's the brutal truth about my procrastination:\n\n${text}\n\nGo get roasted too →`;
+    const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(summary)}`;
+
+    window.open(twitterUrl, '_blank');
+    setShareSuccess('twitter');
+    setTimeout(() => setShareSuccess('idle'), 2000);
+  };
+
+  const handleExportText = () => {
+    const text = roasts
+      .map((r, i) => `${i + 1}. ${r.todo}\n   "${r.roast}"`)
+      .join('\n\n');
+
+    const element = document.createElement('a');
+    element.setAttribute(
+      'href',
+      'data:text/plain;charset=utf-8,' + encodeURIComponent(text)
+    );
+    element.setAttribute('download', `roasted-todos-${new Date().toISOString().split('T')[0]}.txt`);
+    element.style.display = 'none';
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+
+    setShareSuccess('export');
+    setTimeout(() => setShareSuccess('idle'), 2000);
+  };
+
+  const handleCopyAll = () => {
+    const text = roasts
+      .map((r) => `${r.todo}: "${r.roast}"`)
+      .join('\n\n');
+    navigator.clipboard.writeText(text).then(() => {
+      setShareSuccess('copy');
+      setTimeout(() => setShareSuccess('idle'), 2000);
+    });
   };
 
   if (error) {
@@ -198,7 +269,7 @@ export default function RoastingPage() {
         </div>
 
         {/* Roasts Grid */}
-        <div className="space-y-4 mb-8">
+        <div ref={roastsRef} className="space-y-4 mb-8">
           {roasts.map((item) => (
             <div key={item.index} className="roast-card">
               <div className="bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-shadow p-6 backdrop-blur-md">
@@ -265,26 +336,63 @@ export default function RoastingPage() {
             </p>
 
             {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <div className="space-y-3">
+              {/* Primary Actions */}
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={handleScreenshot}
+                  disabled={screenshotLoading}
+                  className={`py-3 px-4 rounded-lg font-semibold transition ${
+                    shareSuccess === 'screenshot'
+                      ? 'bg-green-600 text-white'
+                      : 'bg-gradient-to-r from-red-600 to-red-500 text-white hover:shadow-lg hover:scale-105 transform'
+                  } ${screenshotLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  {shareSuccess === 'screenshot' ? '✓ Downloaded!' : '📸 Screenshot'}
+                </button>
+                <button
+                  onClick={handleTwitterShare}
+                  className={`py-3 px-4 rounded-lg font-semibold transition ${
+                    shareSuccess === 'twitter'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-sky-500 text-white hover:shadow-lg hover:scale-105 transform'
+                  }`}
+                >
+                  {shareSuccess === 'twitter' ? '✓ Tweeting!' : '𝕏 Share Tweet'}
+                </button>
+              </div>
+
+              {/* Secondary Actions */}
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={handleExportText}
+                  className={`py-3 px-4 rounded-lg font-semibold transition ${
+                    shareSuccess === 'export'
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-purple-100 text-purple-900 hover:bg-purple-200 hover:scale-105 transform'
+                  }`}
+                >
+                  {shareSuccess === 'export' ? '✓ Exported!' : '📄 Export TXT'}
+                </button>
+                <button
+                  onClick={handleCopyAll}
+                  className={`py-3 px-4 rounded-lg font-semibold transition ${
+                    shareSuccess === 'copy'
+                      ? 'bg-green-600 text-white'
+                      : 'bg-gray-100 text-gray-900 hover:bg-gray-200 hover:scale-105 transform'
+                  }`}
+                >
+                  {shareSuccess === 'copy' ? '✓ Copied!' : '📋 Copy Text'}
+                </button>
+              </div>
+
+              {/* Navigation */}
               <Link
                 href="/"
-                className="px-6 py-3 bg-gradient-to-r from-red-600 to-red-500 text-white rounded-lg font-semibold hover:shadow-lg hover:scale-105 transition transform"
+                className="w-full block py-3 px-4 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg font-semibold hover:shadow-lg hover:scale-105 transition transform text-center"
               >
                 🔄 Get Roasted Again
               </Link>
-              <button
-                onClick={() => {
-                  const text = roasts
-                    .map((r) => `${r.todo}: "${r.roast}"`)
-                    .join('\n\n');
-                  navigator.clipboard.writeText(text).then(() => {
-                    alert('Roasts copied to clipboard!');
-                  });
-                }}
-                className="px-6 py-3 bg-gray-100 text-gray-900 rounded-lg font-semibold hover:bg-gray-200 hover:scale-105 transition transform"
-              >
-                📋 Copy All Roasts
-              </button>
             </div>
           </div>
         </div>
